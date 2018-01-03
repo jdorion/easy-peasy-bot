@@ -21,6 +21,12 @@ coverage
 # node-waf configuration
 .lock-wscript
 
+# environment variables for node-forman
+.env
+
+# standup times and data files
+db_slack_bot_a
+
 # Compiled binary addons (http://nodejs.org/api/addons.html)
 build/Release
 
