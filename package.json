@@ -21,9 +21,6 @@
     "url": "https://github.com/jdorion/easy-peasy-bot/issues"
   },
   "homepage": "https://github.com/jdorion/easy-peasy-bot#readme",
-  "engines": {
-    "node": "5.1.1"
-  },
   "dependencies": {
     "botkit": "0.2.2",
     "botkit-storage-mongo": "^1.0.2",
