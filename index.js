@@ -1,9 +1,11 @@
 /**
  * A Bot for Slack!
+ * 
+ * Foreman is installed, start by typing 'nf start' in folder
+ * Uses environment vars defined in .env
  */
 
-// TODO:
-// - write the loop that checks if a standup report time has occurred
+
 
 //region boilerplate
 /**
@@ -146,6 +148,17 @@ function getStandupData(channel, cb) {
             cb(null, null);
         } else {
             cb(null, standupData[channel]);
+        }
+    });
+}
+
+function clearStandupData(channel) {
+    controller.storage.teams.get('standupData', function(err, standupData) {
+        if (!standupData || !standupData[channel]) {
+            return;
+        } else {
+            delete standupData[channel];
+            controller.storage.teams.save(standupData);
         }
     });
 }
@@ -316,7 +329,7 @@ controller.hears('trigger', 'direct_mention', function(bot, message) {
     });
 });
 
-// when the time to report is hit, report the standup, clear the storage
+// when the time to report is hit, report the standup, clear the standup data for that channel
 function checkTimesAndReport(bot) {
     getStandupTimes(function(err, standupTimes) { 
         if (!standupTimes) {
@@ -332,6 +345,7 @@ function checkTimesAndReport(bot) {
                         text: getReportDisplay(standupReports),
                         mrkdwn: true
                     });
+                    clearStandupData(channelId);
                 });
             }
         }
