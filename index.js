@@ -5,8 +5,6 @@
  * Uses environment vars defined in .env
  */
 
-
-
 //region boilerplate
 /**
  * Define a function for initiating a conversation on installation
@@ -87,7 +85,6 @@ controller.on('rtm_close', function (bot) {
 /**
  * Core bot logic goes here!
  */
-// BEGIN EDITING HERE!
 
 //region getters / setters of times and reports
 function setStandupTime(channel, standupTimeToSet) {
@@ -364,11 +361,9 @@ function compareHoursAndMinutes(t1, t2) {
 // given the collection of standup reports, collates the entire report
 function getReportDisplay(standupReports) {
     
-    var totalReport = "";
+    var totalReport = "*Standup Report*\n\n";
     for (var user in standupReports) {
-        console.log('user: ' + user);
         var report = standupReports[user];
-        console.log('report: ' + report);
         totalReport += getSingleReportDisplay(report);
     }
     return totalReport;
