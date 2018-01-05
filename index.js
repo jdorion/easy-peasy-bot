@@ -219,8 +219,8 @@ function getHoursAndMinutesFromResponse(responseText) {
 
     if (responseText.length != 5) { return null; }
 
-    let hoursInt = parseInt(responseText);
-    let minutesInt = parseInt(responseText.substring(3,5));
+    var hoursInt = parseInt(responseText);
+    var minutesInt = parseInt(responseText.substring(3,5));
 
     if (!hoursInt || hoursInt <= 0 || hoursInt > 23) { return null; }
     if (!minutesInt || minutesInt < 0 || minutesInt > 59 ) { return null; }
