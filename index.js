@@ -24,11 +24,9 @@ function onInstallation(bot, installer) {
     }
 }
 
-
 /**
  * Configure the persistence options
  */
-
 var config = {};
 if (process.env.MONGOLAB_URI) {
     var BotkitStorage = require('botkit-storage-mongo');
@@ -44,7 +42,6 @@ if (process.env.MONGOLAB_URI) {
 /**
  * Are being run as an app or a custom integration? The initialization will differ, depending
  */
-
 if (process.env.TOKEN || process.env.SLACK_TOKEN) {
     //Treat this as a custom integration
     var customIntegration = require('./lib/custom_integrations');
@@ -316,8 +313,6 @@ function getDateTime() {
 // generates the standup report on command, will not destroy reported standups
 controller.hears('trigger', 'direct_mention', function(bot, message) {
     getStandupData(message.channel, function(err, standupReports) {
-        console.log('standup reports: ' + standupReports);
-        console.log('standup reports length: ' + standupReports.length);
         bot.say({
             channel: message.channel,
             text: getReportDisplay(standupReports),
@@ -361,6 +356,10 @@ function compareHoursAndMinutes(t1, t2) {
 // given the collection of standup reports, collates the entire report
 function getReportDisplay(standupReports) {
     
+    if (!standupReports) {
+        return "*There is no standup data to report.*";
+    }
+
     var totalReport = "*Standup Report*\n\n";
     for (var user in standupReports) {
         var report = standupReports[user];
@@ -405,13 +404,17 @@ controller.hears('help', 'direct_mention', function(bot, message) {
 });
 
 function getHelpMessage() {
-    var helpMsg = "*commands about when the standup report will be generated* \n";
-    helpMsg += "_@botname settime_: `sets the time that the report will be generated. done in a private convo.`\n";
-    helpMsg += "_@botname when_: ` informs the channel when the report will be generated`\n";
-    helpMsg += "_@botname cancel_: `cancels report generation`\n\n";
+    var helpMsg = "";
+    helpMsg += "*icosStandupBot*: written by J.T. Dorion\n";
+    helpMsg += "_intended mode of use_: use the `settime` command to set a report time, each team member use the `standup` command to do their daily standup report at their convenience.\n\n"; 
+    helpMsg += "_note_: the normal report that happens at a specific time also clears the standup data after reporting, while the `trigger` command does not.\n\n"
+    helpMsg += "*commands about when the standup report will be generated* \n";
+    helpMsg += "_@icosStandupBot settime_: `sets the time that the report will be generated. done in a private convo.`\n";
+    helpMsg += "_@icosStandupBot when_: ` informs the channel when the report will be generated`\n";
+    helpMsg += "_@icosStandupBot cancel_: `cancels report generation`\n\n";
     helpMsg += "*commands about collecting and reporting standup data* \n";
-    helpMsg += "_@botname standup_: `bot will ask the standup questions in a private convo`\n";
-    helpMsg += "_@botname trigger_: `reports the standup immediately`\n";
+    helpMsg += "_@icosStandupBot standup_: `bot will ask the standup questions in a private convo`\n";
+    helpMsg += "_@icosStandupBot trigger_: `reports the standup immediately`\n";
     return helpMsg;    
 }
 
