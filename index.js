@@ -2,10 +2,12 @@
  * A Bot for Slack!
  * 
  * Foreman is installed, start by typing 'nf start' in folder
- * Uses environment vars defined in .env
+ * Uses environment vars defined in .env or .vscode/launch.json
+ * run this locally first: 'pagekite.py 8765 jdorion.pagekite.me'
+ * 
  */
 
-//region boilerplate
+//#region boilerplate / intialization
 /**
  * Define a function for initiating a conversation on installation
  * With custom integrations, we don't have a way to find out who installed us, so we can't message them :(
@@ -71,19 +73,25 @@ controller.on('rtm_open', function (bot) {
     setInterval(function() {
         checkTimesAndReport(bot);
     }, 60000);
+    setInterval(function() {
+        checkTimesAndAskStandup(bot);
+    }, 60000);
 });
 
 controller.on('rtm_close', function (bot) {
     console.log('** The RTM api just closed');
     // you may want to attempt to re-open
 });
-//endregion
+//#endregion
 
 /**
  * Core bot logic goes here!
  */
 
-//region getters / setters of times and reports
+
+//#region getters / setters of times and reports
+
+// sets the time that the standup report will be generated for a channel
 function setStandupTime(channel, standupTimeToSet) {
     
     controller.storage.teams.get('standupTimes', function(err, standupTimes) {
@@ -98,6 +106,19 @@ function setStandupTime(channel, standupTimeToSet) {
     });
 }
 
+function cancelStandupTime(channel) {
+    controller.storage.teams.get('standupTimes', function(err, standupTimes) {
+
+        if (!standupTimes || !standupTimes[channel]) {
+            return;
+        } else {
+            delete standupTimes[channel];
+            controller.storage.teams.save(standupTimes);            
+        }
+    });       
+}
+
+// gets the time that the standup report will be generated for a channel
 function getStandupTime(channel, cb) {
     controller.storage.teams.get('standupTimes', function(err, standupTimes) {
         if (!standupTimes || !standupTimes[channel]) {
@@ -108,6 +129,7 @@ function getStandupTime(channel, cb) {
     });
 }
 
+// gets all the times that standup reports will be generated for all channels
 function getStandupTimes(cb) {
     controller.storage.teams.get('standupTimes', function(err, standupTimes) {
         if (!standupTimes) { 
@@ -118,6 +140,62 @@ function getStandupTimes(cb) {
     });
 }
 
+// gets all the times users would like to be asked to report for all channels
+function getAskingTimes(cb) {
+    controller.storage.teams.get('askingtimes', function(err, askingTimes) {
+
+        if (!askingTimes) {
+            cb(null, null);
+        } else {
+            cb(null, askingTimes);
+        }
+    });
+}
+
+// gets the time a user has asked to report for a given channel
+function getAskingTime(user, channel, cb) {
+    controller.storage.teams.get('askingtimes', function(err, askingTimes) {
+
+        if (!askingTimes || !askingTimes[channel] || !askingTimes[channel][user]) {
+            cb(null,null);
+        } else {
+            cb(null, askingTimes[channel][user]);          
+        }
+    });     
+}
+
+// records when a user would like to be asked to report for a channel
+function addAskingTime(user, channel, timeToSet) {
+    controller.storage.teams.get('askingtimes', function(err, askingTimes) {
+
+        if (!askingTimes) {
+            askingTimes = {};
+            askingTimes.id = 'askingtimes';
+        }
+
+        if (!askingTimes[channel]) {
+            askingTimes[channel] = {};
+        }
+
+        askingTimes[channel][user] = timeToSet;
+        controller.storage.teams.save(askingTimes);
+    });
+}
+
+// cancels a user's asking time in a channel
+function cancelAskingTime(user, channel) {
+    controller.storage.teams.get('askingtimes', function(err, askingTimes) {
+
+        if (!askingTimes || !askingTimes[channel] || !askingTimes[channel][user]) {
+            return;
+        } else {
+            delete askingTimes[channel][user];
+            controller.storage.teams.save(askingTimes);            
+        }
+    });   
+}
+
+// adds a user's standup report to the standup data for a channel
 function addStandupData(standupReport) {
     
     controller.storage.teams.get('standupData', function(err, standupData) {
@@ -136,6 +214,7 @@ function addStandupData(standupReport) {
     });
 }
 
+// gets all standup data for a channel
 function getStandupData(channel, cb) {
     controller.storage.teams.get('standupData', function(err, standupData) {
         if (!standupData || !standupData[channel]) {
@@ -146,6 +225,7 @@ function getStandupData(channel, cb) {
     });
 }
 
+// clears all standup reports for a channel
 function clearStandupData(channel) {
     controller.storage.teams.get('standupData', function(err, standupData) {
         if (!standupData || !standupData[channel]) {
@@ -156,15 +236,30 @@ function clearStandupData(channel) {
         }
     });
 }
-//endregion
 
-//region functions to do with the times
+// returns true (in a callback) if the specified user has a standup report saved
+function hasStandup(who, cb) {
+    
+    var user = who.user;
+    var channel = who.channel;
+    controller.storage.teams.get('standupData', function(err, standupData) {
+        if (!standupData || !standupData[channel] || !standupData[channel][user]) {
+            cb(null, false);
+        } else {
+            cb(null, true);
+        }
+    });
+}
+
+//#endregion
+
+//#region functions to do with the standup reporting time
 
 // Informs the channel when the standup report will be generated
-controller.hears('when', 'direct_mention', function(bot, message) {
+controller.hears('whenreport', 'direct_mention', function(bot, message) {
     getChannelName(bot, message.channel, function(err, channelName) {
         if (!err) {           
-            getStandupTime(message.channel, function(err, standuptime) {
+            getStandupTime(message.channel, function(err1, standuptime) {
                 if (!standuptime) {
                     bot.reply(message, 'A standup time has not been set for #' + channelName);
                 } else {
@@ -176,21 +271,21 @@ controller.hears('when', 'direct_mention', function(bot, message) {
 });
 
 // Cancels the standup report by nulling the time for this channel
-controller.hears('cancel', 'direct_mention', function(bot, message) {
-    setStandupTime(message.channel, null);
-    bot.reply(message, 'Standup report has been cancelled for this channel. Please \'settime\' again to resume.');
+controller.hears('cancelreport', 'direct_mention', function(bot, message) {
+    cancelStandupTime(message.channel);
+    bot.reply(message, 'Standup report has been cancelled for this channel. Please \'setreporttime\' again to resume.');
 });
 
 // set the report time
-controller.hears('settime', 'direct_mention', function(bot, message) {
-    var standupTimeToSet = null;
+controller.hears('setreporttime', 'direct_mention', function(bot, message) {
 
     bot.startPrivateConversation({
         user: message.user
     }, function(err, convo) {
         if (!err && convo) {
-            convo.say('You asked to set the time of the standup report!');
-            convo.ask('What time would you like to generate the standup report? (hh:mm, in 24h time)', function(response, convo) {
+            convo.ask('What time would you like to generate the standup report? (hh:mm, in 24h time)\n\n If the hours is less than 10, include a leading zero. eg. 09:45, not 9:45.', function(response, convo) {
+                
+                var standupTimeToSet = null;
                 standupTimeToSet = getHoursAndMinutesFromResponse(response.text);
                 if (standupTimeToSet) {
                     
@@ -226,28 +321,137 @@ function getHoursAndMinutesFromResponse(responseText) {
     if (!minutesInt || minutesInt < 0 || minutesInt > 59 ) { return null; }
     return { hours: hoursInt, minutes: minutesInt };
 }
-//endregion
+//#endregion
 
-//region functions to do with collecting and displaying standup reports
+//#region functions to do with the standup asking time
+
+// informs the user when they will be asked to do their standup
+controller.hears('when', 'direct_mention', function(bot, message) {
+
+    getChannelName(bot, message.channel, function(err, channelName) {
+        if (!err) {
+            getAskingTime(message.user, message.channel, function(err1, askingTime) {
+                getUserName(bot, message.user, function(err2, username) {
+                    if (!err1 && !err2) {
+                        if (!askingTime) {
+                            bot.reply(message, username + ', you have not set an automatic standup for #' + channelName);
+                        } else {
+                            bot.reply(message, username + ", your automatic standup time for #" + channelName + " is " + askingTime.hours + ":" + askingTime.minutes);
+                        }
+                    }  
+                });  
+            });
+        }
+    });
+});
+
+// cancels the automatic asking to do their standup
+controller.hears('cancel', 'direct_mention', function(bot, message) {
+    cancelAskingTime(message.user, message.channel);
+    getUserName(bot, message.user, function(err, username) {
+        bot.reply(message, username + ', you have cancelled your automatic standup. Please \'set\' again to resume, or \'standup\' to report manually.');
+    });
+});
+
+// sets when they will be asked to do their standup
+controller.hears('set', 'direct_mention', function(bot, message) {
+
+    bot.startPrivateConversation({
+        user: message.user
+    }, function(err, convo) {
+        if (!err && convo) {
+            convo.ask('What time would you like to do your standup? (hh:mm, in 24h time)\n\n If the hours is less than 10, include a leading zero. eg. 09:45, not 9:45.', function(response, convo) {
+                
+                var askingTimeToSet = null;
+                askingTimeToSet = getHoursAndMinutesFromResponse(response.text);
+
+                if (askingTimeToSet) {
+                    addAskingTime(message.user, message.channel, askingTimeToSet);
+                    convo.say('Your personal standup time has been changed to `' + askingTimeToSet.hours + ':' + askingTimeToSet.minutes + '`.');          
+                } else {
+                    convo.say('Error reading the entered time, standup time not set.');
+                    convo.say('You said: ' + response.text);
+                    convo.repeat();
+                }
+
+                convo.next();
+            });
+
+        }
+    });
+});
+
+//#endregion
+
+//#region functions to do with collecting and displaying standup reports
 
 // when someone @-mentions the bot and says standup, start a convo and save the results (per channel, in case of multiples)
 controller.hears('standup', 'direct_mention', function(bot, message) {
+    doStandup(bot, message.user, message.channel);
+});
+
+// generates the standup report on command, will not destroy reported standups
+controller.hears('trigger', 'direct_mention', function(bot, message) {
+    getStandupData(message.channel, function(err, standupReports) {
+        bot.say({
+            channel: message.channel,
+            text: getReportDisplay(standupReports),
+            mrkdwn: true
+        });
+    });
+});
+
+// intended to be called every minute. checks if there exists a user that has requested to be asked to give 
+// a standup report at this time, then asks them
+function checkTimesAndAskStandup(bot) {
+    getAskingTimes(function (err, askMeTimes) {
+        
+        if (!askMeTimes) {
+            return;
+        }
+
+        for (var channelId in askMeTimes) {
+
+            for (var userId in askMeTimes[channelId]) {
+
+                var askMeTime = askMeTimes[channelId][userId];
+                var currentHoursAndMinutes = getCurrentHoursAndMinutes();
+                if (compareHoursAndMinutes(currentHoursAndMinutes, askMeTime)) {
+
+                    hasStandup({user: userId, channel: channelId}, function(err, hasStandup) {
+
+                        // if the user has not set an 'ask me time' or has already reported a standup, don't ask again
+                        if (hasStandup == null || hasStandup == true) {
+                            var x = "";
+                        } else {
+                            doStandup(bot, userId, channelId);
+                        }
+                    });
+                }
+            }
+        }
+    });
+}
+
+// will initiate a private conversation with user and save the resulting standup report for the channel
+function doStandup(bot, user, channel) {
+
     var userName = null;
 
-    getUserName(bot, message.user, function(err, name) {
+    getUserName(bot, user, function(err, name) {
         if (!err && name) {
             userName = name;
 
             bot.startPrivateConversation({
-                user: message.user
+                user: user
             }, function(err, convo) {
                 if (!err && convo) {
                     var standupReport = 
                     {
-                        channel: message.channel,
-                        user: message.user,
+                        channel: channel,
+                        user: user,
                         userName: userName,
-                        datetime: getDateTime(),
+                        datetime: getCurrentOttawaDateTimeString(),
                         yesterdayQuestion: null,
                         todayQuestion: null,
                         obstacleQuestion: null
@@ -287,39 +491,7 @@ controller.hears('standup', 'direct_mention', function(bot, message) {
             });
         }
     });
-});
-
-function getDateTime() {
-
-    var date = new Date();
-
-    var hour = date.getHours();
-    hour = (hour < 10 ? "0" : "") + hour;
-
-    var min  = date.getMinutes();
-    min = (min < 10 ? "0" : "") + min;
-
-    var year = date.getFullYear();
-
-    var month = date.getMonth() + 1;
-    month = (month < 10 ? "0" : "") + month;
-
-    var day  = date.getDate();
-    day = (day < 10 ? "0" : "") + day;
-
-    return year + "-" + month + "-" + day + ": " + hour + ":" + min;
 }
-
-// generates the standup report on command, will not destroy reported standups
-controller.hears('trigger', 'direct_mention', function(bot, message) {
-    getStandupData(message.channel, function(err, standupReports) {
-        bot.say({
-            channel: message.channel,
-            text: getReportDisplay(standupReports),
-            mrkdwn: true
-        });
-    });
-});
 
 // when the time to report is hit, report the standup, clear the standup data for that channel
 function checkTimesAndReport(bot) {
@@ -344,13 +516,50 @@ function checkTimesAndReport(bot) {
     });
 }
 
+// returns an object (not date) with the current hours and minutes, Ottawa time
 function getCurrentHoursAndMinutes() {
-    var now = new Date();
+    var now = convertUTCtoOttawa(new Date());
     return { hours: now.getHours(), minutes: now.getMinutes() };
 }
 
+// compares two objects (not date) with hours and minutes
 function compareHoursAndMinutes(t1, t2) {
     return (t1.hours === t2.hours) && (t1.minutes === t2.minutes);
+}
+
+// if the given date is in UTC, converts it to Ottawa time.
+// this is a 'reasonable' hack since the only two places that the js will be run will be on azure (UTC),
+// and locally (Ottawa time)
+function convertUTCtoOttawa(date) {
+    
+    var d = new Date();
+    if (d.getHours() === d.getUTCHours()) {
+        d.setUTCHours(d.getUTCHours() - 5);
+    }
+
+    return d;
+}
+
+// returns a formatted string of the current datetime in Ottawa time
+function getCurrentOttawaDateTimeString() {
+
+    var date = convertUTCtoOttawa(new Date());
+
+    var hour = date.getHours();
+    hour = (hour < 10 ? "0" : "") + hour;
+
+    var min  = date.getMinutes();
+    min = (min < 10 ? "0" : "") + min;
+
+    var year = date.getFullYear();
+
+    var month = date.getMonth() + 1;
+    month = (month < 10 ? "0" : "") + month;
+
+    var day  = date.getDate();
+    day = (day < 10 ? "0" : "") + day;
+
+    return year + "-" + month + "-" + day + ": " + hour + ":" + min;
 }
 
 // given the collection of standup reports, collates the entire report
@@ -376,7 +585,7 @@ function getSingleReportDisplay(standupReport) {
     report += "_Any obstacles:_ `" + standupReport.obstacleQuestion + "`\n\n";
     return report;
 }
-//endregion
+//#endregion
 
 
 /**
@@ -406,19 +615,22 @@ controller.hears('help', 'direct_mention', function(bot, message) {
 function getHelpMessage() {
     var helpMsg = "";
     helpMsg += "*icosStandupBot*: written by J.T. Dorion\n";
-    helpMsg += "_intended mode of use_: use the `settime` command to set a report time, each team member use the `standup` command to do their daily standup report at their convenience.\n\n"; 
     helpMsg += "_note_: the normal report that happens at a specific time also clears the standup data after reporting, while the `trigger` command does not.\n\n"
     helpMsg += "*commands about when the standup report will be generated* \n";
-    helpMsg += "_@icosStandupBot settime_: `sets the time that the report will be generated. done in a private convo.`\n";
-    helpMsg += "_@icosStandupBot when_: ` informs the channel when the report will be generated`\n";
-    helpMsg += "_@icosStandupBot cancel_: `cancels report generation`\n\n";
+    helpMsg += "_@icosstandupbot whenreport_: ` informs the channel when the report will be generated`\n";
+    helpMsg += "_@icosstandupbot cancelreport_: `cancels report generation`\n";
+    helpMsg += "_@icosstandupbot setreporttime_: `sets the time that the report will be generated. done in a private convo.`\n\n";
+    helpMsg += "*commands about having the bot ask you automatically to do your standup*\n";
+    helpMsg += "_@icosstandupbot when_: `informs you when you've set the automatic standup`\n";
+    helpMsg += "_@icosstandupbot set_: `sets the time that the bot will ask you to do your standup`\n";
+    helpMsg += "_@icosstandupbot cancel_: `stops the bot from automatically asking you to do your standup`\n\n";
     helpMsg += "*commands about collecting and reporting standup data* \n";
-    helpMsg += "_@icosStandupBot standup_: `bot will ask the standup questions in a private convo`\n";
-    helpMsg += "_@icosStandupBot trigger_: `reports the standup immediately`\n";
+    helpMsg += "_@icosstandupbot standup_: `bot will ask the standup questions in a private convo`\n";
+    helpMsg += "_@icosstandupbot trigger_: `reports the standup immediately`\n";
     return helpMsg;    
 }
 
-//region rando fun
+//#region rando fun
 function getChannelName(bot, channel, cb) {
     bot.api.channels.info({ channel: channel }, function (err, results) {
         if (results.ok && results.ok === true) {
@@ -457,59 +669,12 @@ controller.hears('dickhead', 'ambient', function(bot, message) {
     bot.reply(message, 'Be nice, Andrew.');
 });
 
+controller.hears('ping', 'direct_mention', function(bot, message) {
+    bot.reply(message, 'pong');
+});
+
 controller.on('bot_channel_join', function (bot, message) {
     bot.reply(message, "I'm here!")
 });
 
-controller.hears('hello', 'direct_message', function (bot, message) {
-    bot.reply(message, 'Hello!');
-});
-
-controller.hears(
-    ['hello', 'hi', 'greetings'],
-    ['direct_mention', 'mention', 'direct_message'],
-    function(bot,message) {
-        bot.reply(message,'shaddup yer face!');
-    }
-);
-
-controller.on('member_joined_channel', function(bot, message) {
-    bot.reply(message,'Welcome to the channel!');
-  });
-
-controller.on('member_left_channel', function(bot, message) {
-    bot.reply(message,'cya.... sucker.');
-  });
-
-controller.hears(['list', 'members'], 'direct_mention', function(bot, message) {
-    bot.reply(message, 'you\'ve asked to list the channel members');
-    bot.reply(message, "for channel: " + message.channel);
-    bot.reply(message, "who said that: " + message.user);
-    
-
-    bot.api.channels.info({
-        channel: message.channel
-    }, function (err, results) {
-        if (results.ok && results.ok === true) {
-
-
-            bot.reply(message, "results: " + results);
-            bot.reply(message, "channel: " + results.channel);
-            bot.reply(message, "members: " + results.channel.members);
-            
-            var members = results.channel.members;
-            for (var index = 0; index < members.length; index++) {
-                var member = members[index];
-
-                 bot.startPrivateConversation({
-                    user: member
-                }, function (err, convo) {
-                    if (!err && convo) {
-                        convo.say('Hello there! I messaged you because you were in the channel #' + results.channel.name);
-                    }
-                });
-            }
-        }
-    });  
-  });
-//endregion
+//#endregion

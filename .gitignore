@@ -24,6 +24,9 @@ coverage
 # environment variables for node-forman
 .env
 
+# vs code launch configuration
+.vscode
+
 # standup times and data files
 db_slack_bot_a
 
